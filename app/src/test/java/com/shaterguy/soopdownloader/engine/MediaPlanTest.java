@@ -43,6 +43,21 @@ public class MediaPlanTest {
             assertEquals(1920,best.width);assertEquals(1080,best.height);assertEquals(8000000,best.bitrate);assertFalse(best.url.contains("_4000k"));
         }
     }
+    @Test public void onlyFetchesHighestLeafAndNeverFallsBackOnFailure() throws Exception {
+        MediaPlan.Variant low=new MediaPlan.Variant("https://vod.sooplive.com/low.m3u8",640,360,30,1000);
+        MediaPlan.Variant high=new MediaPlan.Variant("https://vod.sooplive.com/high.m3u8",1920,1080,60,8000);
+        java.util.ArrayList<String> fetched=new java.util.ArrayList<>();
+        MediaPlan.Selection selected=MediaPlan.select(Arrays.asList(low,high),url->{fetched.add(url);return "#EXTM3U\n#EXTINF:3,\na.ts\n#EXT-X-ENDLIST";});
+        assertSame(high,selected.variant);assertEquals(java.util.Collections.singletonList(high.url),fetched);
+        fetched.clear();try{MediaPlan.select(Arrays.asList(low,high),url->{fetched.add(url);throw new IOException("server unavailable");});fail();}catch(IOException expected){}
+        assertEquals(java.util.Collections.singletonList(high.url),fetched);
+    }
+    @Test public void preservesTrackStartOffsetAndOriginalTiePreference() throws Exception {
+        assertEquals(2000000,MediaPlan.alignedTimestamp(1000000,1000000,2000000));
+        assertEquals(2080000,MediaPlan.alignedTimestamp(1080000,1000000,2000000));
+        MediaPlan.Variant original=new MediaPlan.Variant("original",1920,1080,60,8000);original.preference=1;
+        assertSame(original,MediaPlan.best(Arrays.asList(new MediaPlan.Variant("alternative-codec",1920,1080,60,8000),original)));
+    }
     @Test public void preservesByteRangesAndRejectsUnsafeHosts() throws Exception {
         MediaPlan.Playlist p=MediaPlan.playlist("#EXTM3U\n#EXT-X-BYTERANGE:10@5\na.ts\n#EXT-X-BYTERANGE:7\na.ts\n#EXT-X-ENDLIST","https://vod.sooplive.com/a.m3u8");
         assertEquals(5,p.segments.get(0).offset);assertEquals(15,p.segments.get(1).offset);assertEquals(7,p.segments.get(1).length);

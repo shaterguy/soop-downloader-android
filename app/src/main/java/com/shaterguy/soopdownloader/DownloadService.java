@@ -10,7 +10,6 @@ import com.shaterguy.soopdownloader.engine.Engine;
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.regex.*;
 import org.json.*;
 
 public final class DownloadService extends Service {
@@ -28,19 +27,8 @@ public final class DownloadService extends Service {
     static volatile boolean alive;
 
     public static String normalize(String text) {
-        if(text==null || text.length()>16384) throw new IllegalArgumentException("SOOP 영상 주소를 확인해 주세요.");
-        Matcher m=Pattern.compile("https?://[^\\s<>\"]+",Pattern.CASE_INSENSITIVE).matcher(text);
-        if(!m.find()) throw new IllegalArgumentException("SOOP 영상 주소를 넣어 주세요.");
-        String token=m.group();
-        if(m.find()) throw new IllegalArgumentException("한 번에 영상 주소 하나를 공유해 주세요.");
-        try {
-            java.net.URI uri=new java.net.URI(token);
-            if(!"https".equalsIgnoreCase(uri.getScheme()) || !"vod.sooplive.com".equalsIgnoreCase(uri.getHost()) || uri.getRawUserInfo()!=null || (uri.getPort()!=-1 && uri.getPort()!=443))
-                throw new IllegalArgumentException("SOOP 영상 주소만 지원합니다.");
-            Matcher route=Pattern.compile("/(?:player|PLAYER/STATION)/(\\d+)(/catch)?/?",Pattern.CASE_INSENSITIVE).matcher(uri.getRawPath());
-            if(!route.matches()) throw new IllegalArgumentException("다시보기 또는 개별 캐치 영상의 공유 주소를 넣어 주세요.");
-            return "https://vod.sooplive.com/player/"+route.group(1)+(route.group(2)==null?"":"/catch");
-        } catch(java.net.URISyntaxException e){throw new IllegalArgumentException("영상 주소 형식을 확인해 주세요.");}
+        try { return Engine.normalizeInput(text); }
+        catch(IOException e){ throw new IllegalArgumentException(e.getMessage()); }
     }
     @Override public void onCreate() {
         super.onCreate(); alive=true;

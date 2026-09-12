@@ -43,12 +43,13 @@ public final class MediaPlan {
     }
     public static final class Variant {
         final String url, audioGroup; final int width,height; final double fps; final long bitrate;
+        boolean adaptive, externalAudio; int preference;
         public Variant(String url,int width,int height,double fps,long bitrate) { this(url,width,height,fps,bitrate,""); }
         Variant(String url,int width,int height,double fps,long bitrate,String audio) { this.url=url;this.width=width;this.height=height;this.fps=fps;this.bitrate=bitrate;audioGroup=audio; }
     }
     public static Variant best(List<Variant> list) throws IOException {
         if(list.isEmpty()) throw new IOException("제공되는 영상 화질이 없습니다.");
-        return Collections.max(list,Comparator.comparingLong((Variant v)->(long)v.width*v.height).thenComparingDouble(v->v.fps).thenComparingLong(v->v.bitrate));
+        return Collections.max(list,Comparator.comparingLong((Variant v)->(long)v.width*v.height).thenComparingDouble(v->v.fps).thenComparingLong(v->v.bitrate).thenComparingInt(v->v.preference));
     }
     static Map<String,String> attributes(String line) {
         Map<String,String> a=new HashMap<>(); Matcher m=Pattern.compile("([A-Z0-9-]+)=(?:\"([^\"]*)\"|([^,]*))").matcher(line);
@@ -64,10 +65,45 @@ public final class MediaPlan {
             if(row.startsWith("#EXT-X-STREAM-INF:")) current=attributes(row);
             else if(!row.isEmpty()&&!row.startsWith("#")&&current!=null) {
                 int[] size=resolution(current.getOrDefault("RESOLUTION",""));
-                result.add(new Variant(trusted(URI.create(base).resolve(row).toString()).toString(),size[0],size[1],decimal(current.get("FRAME-RATE")),number(current.getOrDefault("AVERAGE-BANDWIDTH",current.get("BANDWIDTH"))),current.getOrDefault("AUDIO","")));current=null;
+                Variant v=new Variant(trusted(URI.create(base).resolve(row).toString()).toString(),size[0],size[1],decimal(current.get("FRAME-RATE")),number(current.getOrDefault("AVERAGE-BANDWIDTH",current.get("BANDWIDTH"))),current.getOrDefault("AUDIO",""));
+                v.preference="original".equalsIgnoreCase(current.get("NAME"))?1:0;
+                for(String media:body.split("\\r?\\n")) if(media.startsWith("#EXT-X-MEDIA:")) {
+                    Map<String,String> a=attributes(media);
+                    if(!v.audioGroup.isEmpty()&&v.audioGroup.equals(a.get("GROUP-ID"))&&"AUDIO".equals(a.get("TYPE"))&&a.containsKey("URI")) v.externalAudio=true;
+                }
+                result.add(v);current=null;
             }
         }
         return result;
+    }
+    interface ManifestLoader { String load(String url) throws Exception; }
+    static final class Selection {
+        final Variant variant; final String manifest;
+        Selection(Variant variant,String manifest){this.variant=variant;this.manifest=manifest;}
+    }
+    static Selection select(List<Variant> supplied,ManifestLoader loader) throws Exception {
+        List<Variant> candidates=new ArrayList<>();Map<String,String> cache=new HashMap<>();
+        // Adaptive endpoints carry unknown variants: inspect their metadata, never their lower media leaves.
+        for(Variant v:supplied) {
+            if(v.adaptive) {
+                String body=loader.load(v.url);cache.put(v.url,body);List<Variant> children=variants(body,v.url);
+                if(children.isEmpty()) candidates.add(v);else candidates.addAll(children);
+            } else candidates.add(v);
+        }
+        for(int depth=0;depth<6;depth++) {
+            Variant selected=best(candidates);
+            if(selected.externalAudio)throw new IOException("별도 오디오 트랙이 있는 최고 화질은 현재 지원하지 않습니다.");
+            if(!URI.create(selected.url).getPath().toLowerCase(Locale.ROOT).contains(".m3u8"))return new Selection(selected,null);
+            String body=cache.get(selected.url);if(body==null){body=loader.load(selected.url);cache.put(selected.url,body);}
+            List<Variant> children=variants(body,selected.url);
+            if(children.isEmpty()){playlist(body,selected.url);return new Selection(selected,body);}
+            candidates.remove(selected);candidates.addAll(children);
+        }
+        throw new IOException("영상 재생 목록이 너무 깊게 연결되어 있습니다.");
+    }
+    static long alignedTimestamp(long timestamp,long partOrigin,long outputOffset) throws IOException {
+        if(timestamp<partOrigin)throw new IOException("영상 타임스탬프가 구간 시작보다 앞섭니다.");
+        return outputOffset+timestamp-partOrigin;
     }
     static final class Segment {
         final String url; final long offset,length; Segment(String u,long o,long n) {url=u;offset=o;length=n;}

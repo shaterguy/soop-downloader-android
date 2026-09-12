@@ -60,13 +60,12 @@ public final class Engine {
         try {
             int n=0;
             for(Part part:parts.values()) {
-                check();List<MediaPlan.Variant> expanded=new ArrayList<>();Map<String,String> manifests=new HashMap<>();
-                for(MediaPlan.Variant v:part.variants) expand(v,expanded,manifests,0);
-                MediaPlan.Variant best=MediaPlan.best(expanded);
+                check();MediaPlan.Selection selected=MediaPlan.select(part.variants,url->text(url,null));
+                MediaPlan.Variant best=selected.variant;
                 String detail=best.width>0?best.width+" × "+best.height:"원본";
                 listener.progress("최고 화질 "+detail+" · "+(++n)+"/"+parts.size()+" 구간",0);
                 File raw=File.createTempFile("soop-part-",".media",parent);temporary.add(raw);
-                String manifest=manifests.get(best.url);
+                String manifest=selected.manifest;
                 if(manifest!=null) {
                     MediaPlan.Playlist playlist=MediaPlan.playlist(manifest,best.url);int index=0;
                     try(OutputStream out=new BufferedOutputStream(new FileOutputStream(raw))) {
@@ -89,7 +88,10 @@ public final class Engine {
         int[] size=MediaPlan.resolution(f.optString("resolution",data.optString("file_resolution")));
         String rate=f.optString("bitrate",data.optString("file_bps","0")).toLowerCase(Locale.ROOT);
         long bitrate=(long)(MediaPlan.decimal(rate.replace("k",""))*1000);
-        part.variants.add(new MediaPlan.Variant(u,size[0],size[1],f.optDouble("fps",0),bitrate));
+        MediaPlan.Variant candidate=new MediaPlan.Variant(u,size[0],size[1],f.optDouble("fps",0),bitrate);
+        candidate.adaptive="adaptive".equals(f.optString("name"))||URI.create(u).getPath().contains(".smil/");
+        candidate.preference="original".equals(f.optString("name"))?1:0;
+        part.variants.add(candidate);
     }
     static JSONObject exactVideo(JSONObject response,MediaPlan.Input in) throws Exception {
         if(response.optInt("result",0)!=1) throw new IOException("영상을 조회할 수 없습니다. 삭제 또는 시청 제한 여부를 확인해 주세요.");
@@ -103,23 +105,6 @@ public final class Engine {
         if(data.optInt("code",0)<0)throw new IOException("삭제되었거나 비공개인 영상입니다.");
         if(!in.id.equals(data.optString("title_no")))throw new IOException("요청한 영상과 서버 응답이 일치하지 않습니다.");
         return data;
-    }
-    private void expand(MediaPlan.Variant v,List<MediaPlan.Variant> out,Map<String,String> manifests,int depth) throws Exception {
-        if(depth>4)throw new IOException("영상 재생 목록이 너무 깊게 연결되어 있습니다.");
-        if(!URI.create(v.url).getPath().toLowerCase(Locale.ROOT).contains(".m3u8")){out.add(v);return;}
-        String body=text(v.url,null);List<MediaPlan.Variant> children=MediaPlan.variants(body,v.url);
-        if(children.isEmpty()){MediaPlan.playlist(body,v.url);out.add(v);manifests.put(v.url,body);return;}
-        // External audio requires a second independently downloaded track. Refuse rather than save silent video.
-        for(MediaPlan.Variant child:children) {
-            if(!child.audioGroup.isEmpty()) {
-                for(String line:body.split("\\r?\\n")) if(line.startsWith("#EXT-X-MEDIA:")) {
-                    Map<String,String> a=MediaPlan.attributes(line);
-                    if(child.audioGroup.equals(a.get("GROUP-ID"))&&"AUDIO".equals(a.get("TYPE"))&&a.containsKey("URI"))
-                        throw new IOException("별도 오디오 트랙이 있는 재생 목록은 현재 지원하지 않습니다.");
-                }
-            }
-            expand(child,out,manifests,depth+1);
-        }
     }
     private HttpURLConnection open(String url,String post,long offset,long length) throws Exception {
         URI uri=MediaPlan.trusted(url);
@@ -171,19 +156,25 @@ public final class Engine {
                     if(inputs.isEmpty()||width==0)throw new IOException("다운로드한 파일에서 영상 트랙을 찾지 못했습니다.");
                     if(!started){mux.start();started=true;}
                     if(inputs.size()!=formats.size())throw new IOException("구간마다 오디오·영상 구성이 달라 합칠 수 없습니다.");
+                    long partOrigin=Long.MAX_VALUE;
+                    for(int track:inputs) {
+                        ex.selectTrack(track);ex.seekTo(0,MediaExtractor.SEEK_TO_CLOSEST_SYNC);
+                        if(ex.getSampleSize()<0)throw new IOException("비어 있는 영상 트랙입니다.");
+                        partOrigin=Math.min(partOrigin,ex.getSampleTime());ex.unselectTrack(track);
+                    }
                     long partEnd=0;
                     for(int t=0;t<inputs.size();t++) {
                         MediaFormat f=ex.getTrackFormat(inputs.get(t));if(!compatible(formats.get(t),f))throw new IOException("구간마다 영상 코덱 또는 화질이 달라 합칠 수 없습니다.");
-                        ex.selectTrack(inputs.get(t));ex.seekTo(0,MediaExtractor.SEEK_TO_CLOSEST_SYNC);long first=-1,last=0;int count=0;
+                        ex.selectTrack(inputs.get(t));ex.seekTo(0,MediaExtractor.SEEK_TO_CLOSEST_SYNC);long first=ex.getSampleTime(),last=0;int count=0;
                         while(true) {
                             check();long sample=ex.getSampleSize();if(sample<0)break;if(sample>buffer.capacity())throw new IOException("영상 프레임 크기가 지원 범위를 초과했습니다.");
-                            buffer.clear();int size=ex.readSampleData(buffer,0);if(size<0)break;long time=ex.getSampleTime();if(first<0)first=time;
+                            buffer.clear();int size=ex.readSampleData(buffer,0);if(size<0)break;long time=ex.getSampleTime();
                             if((ex.getSampleFlags()&MediaExtractor.SAMPLE_FLAG_ENCRYPTED)!=0)throw new IOException("암호화된 영상은 현재 지원하지 않습니다.");
-                            MediaCodec.BufferInfo info=new MediaCodec.BufferInfo();info.set(0,size,offset+Math.max(0,time-first),(ex.getSampleFlags()&MediaExtractor.SAMPLE_FLAG_SYNC)!=0?MediaCodec.BUFFER_FLAG_KEY_FRAME:0);
-                            mux.writeSampleData(outputs.get(t),buffer,info);last=Math.max(last,time-first);count++;ex.advance();
+                            MediaCodec.BufferInfo info=new MediaCodec.BufferInfo();info.set(0,size,MediaPlan.alignedTimestamp(time,partOrigin,offset),(ex.getSampleFlags()&MediaExtractor.SAMPLE_FLAG_SYNC)!=0?MediaCodec.BUFFER_FLAG_KEY_FRAME:0);
+                            mux.writeSampleData(outputs.get(t),buffer,info);last=Math.max(last,time-partOrigin);count++;ex.advance();
                         }
                         ex.unselectTrack(inputs.get(t));if(count==0)throw new IOException("비어 있는 영상 트랙입니다.");
-                        long duration=f.containsKey(MediaFormat.KEY_DURATION)?f.getLong(MediaFormat.KEY_DURATION):last+33333;
+                        long duration=f.containsKey(MediaFormat.KEY_DURATION)?Math.max(0,first-partOrigin)+f.getLong(MediaFormat.KEY_DURATION):last+33333;
                         // Fragmented sources may report zero duration; last sample is authoritative in that case.
                         partEnd=Math.max(partEnd,Math.max(duration,last+1000));
                     }
@@ -199,7 +190,10 @@ public final class Engine {
     private static boolean compatible(MediaFormat a,MediaFormat b) {
         for(String k:new String[]{MediaFormat.KEY_MIME,MediaFormat.KEY_WIDTH,MediaFormat.KEY_HEIGHT,MediaFormat.KEY_SAMPLE_RATE,MediaFormat.KEY_CHANNEL_COUNT}) {
             if(a.containsKey(k)!=b.containsKey(k))return false;
-            if(a.containsKey(k)&&!String.valueOf(a.getObject(k)).equals(String.valueOf(b.getObject(k))))return false;
+            if(a.containsKey(k)) {
+                if(MediaFormat.KEY_MIME.equals(k)){if(!Objects.equals(a.getString(k),b.getString(k)))return false;}
+                else if(a.getInteger(k)!=b.getInteger(k))return false;
+            }
         }
         for(String k:new String[]{"csd-0","csd-1","csd-2"})if(a.containsKey(k)!=b.containsKey(k)||(a.containsKey(k)&&!a.getByteBuffer(k).equals(b.getByteBuffer(k))))return false;
         return true;

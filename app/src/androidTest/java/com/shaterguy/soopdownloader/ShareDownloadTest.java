@@ -4,6 +4,7 @@ import android.Manifest;
 import android.app.Activity;
 import android.content.*;
 import android.database.Cursor;
+import android.graphics.Bitmap;
 import android.media.MediaExtractor;
 import android.media.MediaFormat;
 import android.net.Uri;
@@ -14,6 +15,8 @@ import android.test.InstrumentationTestCase;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import java.nio.ByteBuffer;
+import java.io.File;
+import java.io.FileOutputStream;
 
 /** Live acceptance gate: no fixture substitution or skip on network failure. */
 public final class ShareDownloadTest extends InstrumentationTestCase {
@@ -65,8 +68,8 @@ public final class ShareDownloadTest extends InstrumentationTestCase {
                     String mime=f.getString(MediaFormat.KEY_MIME);
                     if(mime!=null&&mime.startsWith("video/")) {
                         video=true;
-                        assertTrue(f.getInteger(MediaFormat.KEY_WIDTH)>0);
-                        assertTrue(f.getInteger(MediaFormat.KEY_HEIGHT)>0);
+                        assertEquals("Observed original video width",640,f.getInteger(MediaFormat.KEY_WIDTH));
+                        assertEquals("Observed original video height",1080,f.getInteger(MediaFormat.KEY_HEIGHT));
                         assertTrue("Full catch duration",f.getLong(MediaFormat.KEY_DURATION)>45000000L);
                         extractor.selectTrack(i);
                         assertTrue("Readable video sample",extractor.readSampleData(ByteBuffer.allocate(4*1024*1024),0)>0);
@@ -82,6 +85,15 @@ public final class ShareDownloadTest extends InstrumentationTestCase {
             try(Cursor c=context.getContentResolver().query(saved,new String[]{MediaStore.Video.Media._ID},null,null,null)) {
                 assertNotNull(c);assertTrue("Recovery must retain published video",c.moveToFirst());
             }
+            getInstrumentation().waitForIdleSync();
+            // Leave the completed app visible while capturing the real emulator UI.
+            SystemClock.sleep(1000);
+            Bitmap screenshot=getInstrumentation().getUiAutomation().takeScreenshot();
+            assertNotNull("UI screenshot",screenshot);
+            File image=new File(context.getExternalFilesDir(null),"soop-ui.png");
+            try(FileOutputStream stream=new FileOutputStream(image)) {
+                assertTrue(screenshot.compress(Bitmap.CompressFormat.PNG,100,stream));
+            } finally {screenshot.recycle();}
         } finally {
             if(activity!=null){final Activity a=activity;getInstrumentation().runOnMainSync(a::finish);}
             context.stopService(new Intent(context,DownloadService.class));

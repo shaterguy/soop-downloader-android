@@ -6,6 +6,7 @@ on:
     paths: ['.github/workflows/signing-bootstrap.yml', 'tools/signing.sh']
 permissions:
   contents: write
+  actions: write
 concurrency:
   group: soop-signing-bootstrap
   cancel-in-progress: false
@@ -55,6 +56,11 @@ jobs:
           git commit -m 'chore: initialize permanent release signing identity'
           git push origin HEAD:main
           test "$(git rev-parse HEAD)" = "$(git ls-remote origin refs/heads/main | cut -f1)"
+      - name: Start verified stable release
+        if: steps.ready.outputs.ready == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run release.yml --ref main
       - name: Remove plaintext signing material
         if: always()
         run: rm -rf "$RUNNER_TEMP/soop-signing"
