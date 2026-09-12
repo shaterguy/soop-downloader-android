@@ -41,7 +41,7 @@ jobs:
           script: |
             ./gradlew --no-daemon connectedDebugAndroidTest
             mkdir -p app/build/reports/androidTests/screenshots
-            adb pull /sdcard/Android/data/com.shaterguy.soopdownloader.debug/files/soop-ui.png app/build/reports/androidTests/screenshots/soop-ui.png
+            adb pull /sdcard/Pictures/SOOP-Test/soop-ui.png app/build/reports/androidTests/screenshots/soop-ui.png
       - name: Preserve emulator test results
         if: always()
         uses: actions/upload-artifact@v4

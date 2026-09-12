@@ -15,8 +15,7 @@ import android.test.InstrumentationTestCase;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import java.nio.ByteBuffer;
-import java.io.File;
-import java.io.FileOutputStream;
+import java.io.OutputStream;
 
 /** Live acceptance gate: no fixture substitution or skip on network failure. */
 public final class ShareDownloadTest extends InstrumentationTestCase {
@@ -90,10 +89,27 @@ public final class ShareDownloadTest extends InstrumentationTestCase {
             SystemClock.sleep(1000);
             Bitmap screenshot=getInstrumentation().getUiAutomation().takeScreenshot();
             assertNotNull("UI screenshot",screenshot);
-            File image=new File(context.getExternalFilesDir(null),"soop-ui.png");
-            try(FileOutputStream stream=new FileOutputStream(image)) {
-                assertTrue(screenshot.compress(Bitmap.CompressFormat.PNG,100,stream));
-            } finally {screenshot.recycle();}
+            // Public test media survives connectedAndroidTest uninstalling the target APK.
+            ContentValues imageValues=new ContentValues();
+            imageValues.put(MediaStore.Images.Media.DISPLAY_NAME,"soop-ui.png");
+            imageValues.put(MediaStore.Images.Media.MIME_TYPE,"image/png");
+            imageValues.put(MediaStore.Images.Media.RELATIVE_PATH,"Pictures/SOOP-Test");
+            imageValues.put(MediaStore.Images.Media.IS_PENDING,1);
+            Uri image=context.getContentResolver().insert(MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY),imageValues);
+            assertNotNull("Screenshot MediaStore row",image);
+            boolean imagePublished=false;
+            try {
+                try(OutputStream stream=context.getContentResolver().openOutputStream(image)) {
+                    assertNotNull("Screenshot output",stream);
+                    assertTrue(screenshot.compress(Bitmap.CompressFormat.PNG,100,stream));
+                }
+                imageValues.clear();imageValues.put(MediaStore.Images.Media.IS_PENDING,0);
+                assertEquals(1,context.getContentResolver().update(image,imageValues,null,null));
+                imagePublished=true;
+            } finally {
+                screenshot.recycle();
+                if(!imagePublished)context.getContentResolver().delete(image,null,null);
+            }
         } finally {
             if(activity!=null){final Activity a=activity;getInstrumentation().runOnMainSync(a::finish);}
             context.stopService(new Intent(context,DownloadService.class));
