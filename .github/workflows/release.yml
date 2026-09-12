@@ -115,8 +115,9 @@ jobs:
           "$BT/apksigner" sign --ks "$SOOP_KEYSTORE" --ks-key-alias soop-release \
             --ks-pass env:SOOP_SIGNING_PASSPHRASE --v2-signing-enabled true --v3-signing-enabled true \
             --v4-signing-enabled false --out "$APK" "$RUNNER_TEMP/aligned.apk"
-          "$BT/apksigner" verify --verbose --print-certs "$APK" > release-output/signature.txt
-          grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' release-output/signature.txt
+          "$BT/apksigner" verify --verbose --print-certs "$APK" | tee release-output/signature.txt
+          # minSdk 29 uses v3 verification; v2 may be reported false when v3 is selected.
+          grep -q 'Verified using v3 scheme (APK Signature Scheme v3): true' release-output/signature.txt
           CERT="$(sed -n 's/Signer #1 certificate SHA-256 digest: //p' release-output/signature.txt)"
           test "$CERT" = "$(tr -d '\r\n ' < signing/certificate.sha256)"
           PREVIOUS="$(jq -r '[.[] | select(.draft == false and .prerelease == false)][0].tag_name // empty' "$RUNNER_TEMP/releases.json")"
