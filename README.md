@@ -30,7 +30,8 @@ SOOP 다시보기·캐치 링크를 받아 제공되는 최고 화질의 영상�
 
 모든 완료된 업데이트는 정식 릴리즈로 제공합니다. 고정 패키지와 동일 영구 서명을 유지하고 `versionName`·`versionCode`를 증가시킵니다. 최초 서명 설정은 [RELEASE_SETUP.md](RELEASE_SETUP.md), 이후 작업 규칙은 [AGENTS.md](AGENTS.md)를 따릅니다.
 
-현재 최초 버전 1.0.0은 구현되었으며 영구 서명 초기화가 남아 있습니다. `SOOP_SIGNING_PASSPHRASE` Secret과 암호화 키가 없으면 정식 발행을 차단합니다. unsigned CI 산출물은 설치용 정식 APK가 아닙니다.
+정식 버전 **1.0.0**: [APK 다운로드](https://github.com/shaterguy/soop-downloader-android/releases/download/v1.0.0/soop-downloader-android-v1.0.0.apk) · [릴리즈](https://github.com/shaterguy/soop-downloader-android/releases/tag/v1.0.0).
 
-최초 기능 검증: [Android 15 공유 다운로드 테스트·빌드 성공](https://github.com/shaterguy/soop-downloader-android/actions/runs/34700629715/job/103571631443). 11개 단위 테스트 및 실제 캐치 다운로드·영상/음성·640×1080·갤러리 공개 검증을 통과했습니다. 같은 실행의 서명 job은 최초 Secret 미등록으로 의도대로 발행을 차단했습니다.
+영구 RSA4096 서명키는 CI에서 생성했고, 암호화 키와 공개 인증서를 `signing/`에 보관합니다. 서명 암호는 저장소 Actions Secret에 유지합니다. 인증서 SHA256은 `9149386260014a262edd345f726dbc9443e434757a2ff1ab494424fbbf872cb4`입니다. 이후 업데이트도 동일 서명으로 설치 호환성을 유지합니다.
 
+[정식 릴리즈 검증 실행](https://github.com/shaterguy/soop-downloader-android/actions/runs/34701634969): 단위 테스트·lint·Android 15 실제 공유 다운로드·APK v3 서명·인증서 지문·패키지 검증을 수행합니다. 예시 캐치는 원본 640×1080 영상과 음성이 포함된 MP4로 저장됩니다.
