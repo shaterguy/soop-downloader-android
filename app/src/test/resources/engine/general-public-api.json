@@ -1,0 +1,54 @@
+{
+  "result": 1,
+  "data": {
+    "title_no": 206420475,
+    "title": "[9.6] 토크, 롯데리아 리아 레드 불고기 버거 리뷰, 롤 솔랭",
+    "adult_status": "pass",
+    "file_resolution": "1920x1080",
+    "sub_upload_type": "",
+    "files": [
+      {
+        "title_no": 206420475,
+        "hide": "N",
+        "duration": 17902150,
+        "file_order": 1,
+        "file": "https://vod-archive-global-cdn-z02.sooplive.com/spkt/vod/20260906/073/296926073/REGL_DD96BE5A_296926073_1.smil/manifest.m3u8?rp=p02",
+        "quality_info": [
+          {
+            "label": "Auto",
+            "resolution": "",
+            "bitrate": "0k",
+            "file": "https://vod-archive-global-cdn-z02.sooplive.com/spkt/vod/20260906/073/296926073/REGL_DD96BE5A_296926073_1.smil/manifest.m3u8?rp=p02",
+            "name": "adaptive",
+            "vcodec": ""
+          },
+          {
+            "label": "1080p",
+            "resolution": "1920x1080",
+            "bitrate": "8000k",
+            "file": "https://vod-archive-global-cdn-z02.sooplive.com/spkt/vod/20260906/073/296926073/REGL_DD96BE5A_296926073_1.mp4/manifest.m3u8?rp=p02",
+            "name": "original",
+            "vcodec": "h264"
+          },
+          {
+            "label": "720p",
+            "resolution": "1280x720",
+            "bitrate": "4000k",
+            "file": "https://vod-archive-global-cdn-z02.sooplive.com/spkt/vod/20260906/073/296926073/REGL_DD96BE5A_296926073_1_4000k.mp4/manifest.m3u8?rp=p02",
+            "name": "hd4k",
+            "vcodec": "h264"
+          },
+          {
+            "label": "540p",
+            "resolution": "960x540",
+            "bitrate": "1000k",
+            "file": "https://vod-archive-global-cdn-z02.sooplive.com/spkt/vod/20260906/073/296926073/REGL_DD96BE5A_296926073_1_1000k.mp4/manifest.m3u8?rp=p02",
+            "name": "hd",
+            "vcodec": "h264"
+          }
+        ],
+        "multi_codec_quality_info": []
+      }
+    ]
+  }
+}

@@ -1,0 +1,146 @@
+name: Stable Android release
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['docs/**', '*.md']
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: soop-stable-release
+  cancel-in-progress: false
+jobs:
+  build:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Test and build unsigned release
+        run: ./gradlew --no-daemon testDebugUnitTest lintRelease assembleRelease assembleDebugAndroidTest
+      - name: Enable emulator KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Verify live share download on Android 15
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: ./gradlew --no-daemon connectedDebugAndroidTest
+      - name: Preserve emulator test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-share-test-results
+          path: |
+            app/build/reports/androidTests/
+            app/build/outputs/androidTest-results/
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-build-evidence
+          path: app/build/outputs/apk/release/app-release-unsigned.apk
+          retention-days: 7
+  release:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: actions/download-artifact@v4
+        with:
+          name: unsigned-build-evidence
+          path: app/build/outputs/apk/release
+      - name: Inspect package and version
+        id: identity
+        run: |
+          set -euo pipefail
+          BT="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          echo "BT=$BT" >> "$GITHUB_ENV"
+          APK=app/build/outputs/apk/release/app-release-unsigned.apk
+          test -s "$APK"
+          "$BT/aapt" dump badging "$APK" > "$RUNNER_TEMP/package.txt"
+          VERSION="$(sed -n "s/^package:.*versionName='\([^']*\)'.*/\1/p" "$RUNNER_TEMP/package.txt")"
+          CODE="$(sed -n "s/^package:.*versionCode='\([^']*\)'.*/\1/p" "$RUNNER_TEMP/package.txt")"
+          PACKAGE="$(sed -n "s/^package: name='\([^']*\)'.*/\1/p" "$RUNNER_TEMP/package.txt")"
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$CODE" =~ ^[1-9][0-9]*$ ]]
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "VERSION_CODE=$CODE" >> "$GITHUB_ENV"
+          echo "PACKAGE_ID=$PACKAGE" >> "$GITHUB_ENV"
+          gh api "repos/$GITHUB_REPOSITORY/releases" > "$RUNNER_TEMP/releases.json"
+          if jq -e --arg tag "v$VERSION" '.[] | select(.tag_name == $tag)' "$RUNNER_TEMP/releases.json" >/dev/null; then
+            echo 'publish=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'publish=true' >> "$GITHUB_OUTPUT"
+          fi
+      - name: Restore permanent signing identity
+        if: steps.identity.outputs.publish == 'true'
+        env:
+          SOOP_SIGNING_PASSPHRASE: ${{ secrets.SOOP_SIGNING_PASSPHRASE }}
+        run: bash tools/signing.sh restore
+      - name: Sign and verify update lineage
+        if: steps.identity.outputs.publish == 'true'
+        env:
+          SOOP_SIGNING_PASSPHRASE: ${{ secrets.SOOP_SIGNING_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          mkdir -p release-output
+          APK="release-output/soop-downloader-android-v$VERSION.apk"
+          "$BT/zipalign" -P 16 -f 4 app/build/outputs/apk/release/app-release-unsigned.apk "$RUNNER_TEMP/aligned.apk"
+          "$BT/apksigner" sign --ks "$SOOP_KEYSTORE" --ks-key-alias soop-release \
+            --ks-pass env:SOOP_SIGNING_PASSPHRASE --v2-signing-enabled true --v3-signing-enabled true \
+            --v4-signing-enabled false --out "$APK" "$RUNNER_TEMP/aligned.apk"
+          "$BT/apksigner" verify --verbose --print-certs "$APK" > release-output/signature.txt
+          grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' release-output/signature.txt
+          CERT="$(sed -n 's/Signer #1 certificate SHA-256 digest: //p' release-output/signature.txt)"
+          test "$CERT" = "$(tr -d '\r\n ' < signing/certificate.sha256)"
+          PREVIOUS="$(jq -r '[.[] | select(.draft == false and .prerelease == false)][0].tag_name // empty' "$RUNNER_TEMP/releases.json")"
+          if [[ -n "$PREVIOUS" ]]; then
+            mkdir -p "$RUNNER_TEMP/previous"
+            gh release download "$PREVIOUS" --pattern '*.apk' --dir "$RUNNER_TEMP/previous"
+            mapfile -t OLD_APKS < <(find "$RUNNER_TEMP/previous" -name '*.apk')
+            test "${#OLD_APKS[@]}" = 1
+            OLD="${OLD_APKS[0]}"
+            "$BT/apksigner" verify --print-certs "$OLD" > "$RUNNER_TEMP/previous-cert.txt"
+            test "$CERT" = "$(sed -n 's/Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/previous-cert.txt")"
+            "$BT/aapt" dump badging "$OLD" > "$RUNNER_TEMP/previous-package.txt"
+            OLD_CODE="$(sed -n "s/^package:.*versionCode='\([^']*\)'.*/\1/p" "$RUNNER_TEMP/previous-package.txt")"
+            OLD_PACKAGE="$(sed -n "s/^package: name='\([^']*\)'.*/\1/p" "$RUNNER_TEMP/previous-package.txt")"
+            test "$PACKAGE_ID" = "$OLD_PACKAGE"
+            test "$VERSION_CODE" -gt "$OLD_CODE"
+          fi
+          (cd release-output && sha256sum "soop-downloader-android-v$VERSION.apk" > SHA256SUMS)
+          printf 'source_sha=%s\nversion=%s\nversion_code=%s\npackage=%s\ncertificate_sha256=%s\n' \
+            "$GITHUB_SHA" "$VERSION" "$VERSION_CODE" "$PACKAGE_ID" "$CERT" > release-output/build-identity.txt
+      - name: Publish stable release
+        if: steps.identity.outputs.publish == 'true'
+        run: |
+          set -euo pipefail
+          printf 'SOOP Downloader %s\n\nSource: %s\n\n최고 화질 자동 선택과 기기 내 영상 저장을 지원합니다.\n' "$VERSION" "$GITHUB_SHA" > "$RUNNER_TEMP/release-notes.md"
+          gh release create "v$VERSION" --target "$GITHUB_SHA" --title "SOOP Downloader v$VERSION" \
+            --notes-file "$RUNNER_TEMP/release-notes.md" --latest release-output/*
+          test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/v$VERSION" --jq '.object.sha')" = "$GITHUB_SHA"
+          gh release view "v$VERSION" --json isDraft,isPrerelease,assets,url
+      - name: Remove plaintext signing material
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/soop-signing" "$RUNNER_TEMP/aligned.apk"
