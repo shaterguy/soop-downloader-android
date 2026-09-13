@@ -22,6 +22,7 @@ public final class DownloadService extends Service {
     private volatile boolean cancelled;
     private volatile boolean destroyed;
     private String active;
+    private volatile String activeToken="";
     private int latestStart;
     private long lastNotice;
     static volatile boolean alive;
@@ -52,22 +53,34 @@ public final class DownloadService extends Service {
     @Override public int onStartCommand(Intent intent,int flags,int startId) {
         latestStart=startId;
         if(intent==null){stopSelf(startId);return START_NOT_STICKY;}
-        if(CANCEL.equals(intent.getAction())){cancelled=true;queue.clear();pending.clear();prefs().edit().putInt("queued",0).apply();if(active==null)stopSelf(startId);return START_NOT_STICKY;}
+        if(CANCEL.equals(intent.getAction())){
+            // An old notification or repeated tap must never cancel the following video.
+            String target=intent.getStringExtra("jobId");
+            if(active!=null && activeToken.equals(target)) cancelled=true;
+            if(active==null)stopSelf(startId);
+            return START_NOT_STICKY;
+        }
         String url;
         try {url=normalize(intent.getStringExtra("url"));} catch(Exception e){if(active==null){status(e.getMessage(),0,false);stopSelf(startId);}return START_NOT_STICKY;}
-        if(pending.contains(url)) return START_NOT_STICKY;
+        if(pending.contains(url)) {
+            if(intent.getBooleanExtra("shared",false))toast("이미 다운로드 중이거나 대기 중인 영상입니다.");
+            return START_NOT_STICKY;
+        }
         startForeground(NOTICE,notification("다운로드 준비 중",0),ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
         pending.add(url); queue.add(url); prefs().edit().putInt("queued",Math.max(0,queue.size()-(active==null?1:0))).apply();
         if(active==null) next();
+        if(intent.getBooleanExtra("shared",false))toast("백그라운드 다운로드를 시작합니다.");
         return START_NOT_STICKY;
     }
+    private void toast(String text){android.widget.Toast.makeText(this,text,android.widget.Toast.LENGTH_SHORT).show();}
     private SharedPreferences prefs(){return getSharedPreferences(PREFS,0);}
     private void next(){
         if(destroyed)return;
         active=queue.poll();
-        if(active==null){stopForeground(STOP_FOREGROUND_REMOVE);stopSelfResult(latestStart);return;}
-        cancelled=false;String url=active;
-        prefs().edit().putString("lastUrl",url).putInt("queued",queue.size()).apply();
+        if(active==null){activeToken="";prefs().edit().putString("activeJobId","").putInt("queued",0).apply();stopForeground(STOP_FOREGROUND_REMOVE);stopSelfResult(latestStart);return;}
+        cancelled=false;activeToken=UUID.randomUUID().toString();String url=active;
+        lastNotice=0;
+        prefs().edit().putString("activeJobId",activeToken).putString("lastUrl",url).putInt("queued",queue.size()).apply();
         status("최고 화질 확인 중",0,true);
         worker.submit(()->runDownload(url));
     }
@@ -127,10 +140,11 @@ public final class DownloadService extends Service {
     private Notification notification(String text,int progress){
         Intent open=new Intent(this,MainActivity.class);
         PendingIntent content=PendingIntent.getActivity(this,0,open,PendingIntent.FLAG_IMMUTABLE|PendingIntent.FLAG_UPDATE_CURRENT);
-        PendingIntent cancel=PendingIntent.getService(this,1,new Intent(this,DownloadService.class).setAction(CANCEL),PendingIntent.FLAG_IMMUTABLE|PendingIntent.FLAG_UPDATE_CURRENT);
+        PendingIntent cancel=PendingIntent.getService(this,1,new Intent(this,DownloadService.class).setAction(CANCEL).setData(Uri.parse("soop-download://cancel/"+activeToken)).putExtra("jobId",activeToken),PendingIntent.FLAG_IMMUTABLE|PendingIntent.FLAG_UPDATE_CURRENT);
         return new Notification.Builder(this,CHANNEL).setSmallIcon(com.shaterguy.soopdownloader.R.drawable.ic_download).setContentTitle("SOOP Downloader").setContentText(text).setContentIntent(content).setOnlyAlertOnce(true).setOngoing(true).setProgress(100,Math.max(0,progress),progress<=0).addAction(new Notification.Action.Builder(null,"취소",cancel).build()).build();
     }
     @Override public void onTimeout(int startId,int fgsType){cancelled=true;queue.clear();status("백그라운드 실행 시간이 끝났습니다. 앱에서 다시 시도해 주세요.",0,false);stopForeground(STOP_FOREGROUND_REMOVE);stopSelf();}
     @Override public void onDestroy(){destroyed=true;cancelled=true;queue.clear();pending.clear();worker.shutdownNow();alive=false;super.onDestroy();}
     @Override public IBinder onBind(Intent intent){return null;}
 }
+

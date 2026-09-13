@@ -22,6 +22,7 @@ public final class MainActivity extends Activity {
     private LinearLayout records;
     private Button cancel;
     private String shownHistory="";
+    private String shownJobId="";
     private final Handler handler=new Handler(Looper.getMainLooper());
     private final Runnable refresh=new Runnable(){public void run(){renderStatus();handler.postDelayed(this,700);}};
     private SharedPreferences prefs(){return getSharedPreferences(DownloadService.PREFS,0);}
@@ -76,9 +77,9 @@ public final class MainActivity extends Activity {
         phase=label("다운로드할 영상을 기다리고 있습니다.",14,INK,true);state.addView(phase);
         progress=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);progress.setMax(100);progress.setProgressTintList(android.content.res.ColorStateList.valueOf(GREEN));LinearLayout.LayoutParams pp=new LinearLayout.LayoutParams(-1,dp(8));pp.topMargin=dp(16);state.addView(progress,pp);
         queueLabel=label("",12,MUTED,false);add(state,queueLabel,8);
-        cancel=button("다운로드 취소",false);add(state,cancel,8);cancel.setOnClickListener(v->startService(new Intent(this,DownloadService.class).setAction(DownloadService.CANCEL)));
+        cancel=button("다운로드 취소",false);add(state,cancel,8);cancel.setOnClickListener(v->startService(new Intent(this,DownloadService.class).setAction(DownloadService.CANCEL).putExtra("jobId",shownJobId)));
         add(root,label("공유로 더 빠르게",16,INK,true),26);
-        add(root,label("SOOP에서 공유 → SOOP Downloader를 선택하면\n추가 버튼 없이 바로 다운로드합니다.",14,MUTED,false),8);
+        add(root,label("SOOP에서 공유 → SOOP Downloader를 선택하면\n앱 화면 없이 백그라운드에서 다운로드합니다.",14,MUTED,false),8);
         LinearLayout header=new LinearLayout(this);header.setGravity(Gravity.CENTER_VERTICAL);add(root,header,28);
         header.addView(label("저장한 영상",19,INK,true),new LinearLayout.LayoutParams(0,-2,1));
         TextView folder=label("폴더 열기 ↗",13,GREEN,true);folder.setPadding(dp(8),dp(12),0,dp(12));header.addView(folder);folder.setOnClickListener(v->{try{Intent i=new Intent(Intent.ACTION_VIEW).setDataAndType(Uri.parse("content://com.android.externalstorage.documents/document/primary%3AMovies%2FSOOP%20Downloader"),"vnd.android.document/directory").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);startActivity(i);}catch(Exception e){toast("파일 앱에서 Movies/SOOP Downloader를 열어 주세요.");}});
@@ -87,6 +88,7 @@ public final class MainActivity extends Activity {
     }
     private String version(){try{return getPackageManager().getPackageInfo(getPackageName(),0).versionName;}catch(Exception e){return "1.0.0";}}
     private void renderStatus(){
+        shownJobId=prefs().getString("activeJobId","");
         boolean busy=prefs().getBoolean("busy",false);
         phase.setText(prefs().getString("phase","다운로드할 영상을 기다리고 있습니다."));
         int p=prefs().getInt("progress",0);progress.setIndeterminate(busy&&p==0);progress.setProgress(p);
@@ -112,3 +114,4 @@ public final class MainActivity extends Activity {
     private int dp(int x){return (int)(x*getResources().getDisplayMetrics().density+.5f);}
     private void toast(String message){Toast.makeText(this,message,Toast.LENGTH_LONG).show();}
 }
+

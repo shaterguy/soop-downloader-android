@@ -2,6 +2,9 @@ package com.shaterguy.soopdownloader;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.Instrumentation;
+import android.app.NotificationManager;
+import android.service.notification.StatusBarNotification;
 import android.content.*;
 import android.database.Cursor;
 import android.graphics.Bitmap;
@@ -21,23 +24,55 @@ import java.io.OutputStream;
 public final class ShareDownloadTest extends InstrumentationTestCase {
     private static final String EXAMPLE="https://vod.sooplive.com/player/206449237/catch";
 
-    public void testSharedCatchPublishesPlayableVideoOnce() throws Exception {
+    public void testBackgroundShareAndCancelOnlyActiveVideo() throws Exception {
         Context context=getInstrumentation().getTargetContext();
         SharedPreferences prefs=context.getSharedPreferences(DownloadService.PREFS,0);
         assertTrue("Fresh emulator preferences",prefs.edit().clear().commit());
         if(Build.VERSION.SDK_INT>=33)
             getInstrumentation().getUiAutomation().grantRuntimePermission(context.getPackageName(),Manifest.permission.POST_NOTIFICATIONS);
-        Intent share=new Intent(Intent.ACTION_SEND).setClass(context,MainActivity.class)
+        Intent share=new Intent(Intent.ACTION_SEND).setClass(context,ShareActivity.class)
                 .setType("text/plain").putExtra(Intent.EXTRA_TEXT,"SOOP 영상 공유\n"+EXAMPLE)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         Activity activity=null;
         Uri saved=null;
         try {
-            activity=getInstrumentation().startActivitySync(share);
-            assertNotNull("Share recipient launches",activity);
-            // A second delivery while the first is active must be coalesced.
-            final MainActivity recipient=(MainActivity)activity;
-            getInstrumentation().runOnMainSync(()->recipient.onNewIntent(new Intent(share)));
+            // Cold share must start the foreground service without opening MainActivity.
+            Instrumentation.ActivityMonitor mainMonitor=getInstrumentation().addMonitor(MainActivity.class.getName(),null,false);
+            context.startActivity(new Intent(share).putExtra(Intent.EXTRA_TEXT,"https://vod.sooplive.com/player/206420475"));
+            long ready=SystemClock.elapsedRealtime()+10000;
+            while(prefs.getString("activeJobId","").isEmpty() && SystemClock.elapsedRealtime()<ready)SystemClock.sleep(50);
+            String cancelledJob=prefs.getString("activeJobId","");
+            assertFalse("First job started",cancelledJob.isEmpty());
+            getInstrumentation().waitForIdleSync();
+            NotificationManager notifications=context.getSystemService(NotificationManager.class);
+            android.app.PendingIntent oldCancel=null;
+            for(StatusBarNotification n:notifications.getActiveNotifications()) {
+                if(n.getNotification().actions!=null && n.getNotification().actions.length>0)
+                    oldCancel=n.getNotification().actions[0].actionIntent;
+            }
+            assertNotNull("Per-video notification cancel action",oldCancel);
+            // Resolve the same SEND intent that the system share sheet delivers.
+            Intent implicit=new Intent(Intent.ACTION_SEND).setPackage(context.getPackageName()).setType("text/plain");
+            assertEquals(ShareActivity.class.getName(),context.getPackageManager().resolveActivity(implicit,0).activityInfo.name);
+            context.startActivity(share);
+            ready=SystemClock.elapsedRealtime()+10000;
+            while(prefs.getInt("queued",0)!=1 && SystemClock.elapsedRealtime()<ready)SystemClock.sleep(50);
+            assertEquals("Second video queued by background share",1,prefs.getInt("queued",0));
+            assertEquals("Shared link must not open MainActivity",0,mainMonitor.getHits());
+            // Repeated share must not duplicate the queued item.
+            context.startActivity(new Intent(share));
+            SystemClock.sleep(500);
+            assertEquals(1,prefs.getInt("queued",0));
+            // UI cancel targets exactly the ID rendered by the screen.
+            context.startService(new Intent(context,DownloadService.class).setAction(DownloadService.CANCEL).putExtra("jobId",cancelledJob));
+            ready=SystemClock.elapsedRealtime()+60000;
+            while(cancelledJob.equals(prefs.getString("activeJobId","")) && SystemClock.elapsedRealtime()<ready)SystemClock.sleep(100);
+            assertEquals("Queued video starts after current cancellation",EXAMPLE,prefs.getString("lastUrl",""));
+            assertFalse("New video has a distinct cancellation identity",cancelledJob.equals(prefs.getString("activeJobId","")));
+            // The previous notification must not cancel the new active video.
+            oldCancel.send();
+            assertEquals("No download screen launched by sharing",0,mainMonitor.getHits());
+            getInstrumentation().removeMonitor(mainMonitor);
             long deadline=SystemClock.elapsedRealtime()+180000;
             JSONArray history=new JSONArray();
             while(SystemClock.elapsedRealtime()<deadline) {
@@ -85,6 +120,8 @@ public final class ShareDownloadTest extends InstrumentationTestCase {
                 assertNotNull(c);assertTrue("Recovery must retain published video",c.moveToFirst());
             }
             getInstrumentation().waitForIdleSync();
+            // Open the screen explicitly only after background acceptance checks.
+            activity=getInstrumentation().startActivitySync(new Intent(context,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             // Leave the completed app visible while capturing the real emulator UI.
             SystemClock.sleep(1000);
             Bitmap screenshot=getInstrumentation().getUiAutomation().takeScreenshot();
@@ -117,3 +154,4 @@ public final class ShareDownloadTest extends InstrumentationTestCase {
         }
     }
 }
+
