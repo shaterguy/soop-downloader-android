@@ -4,11 +4,11 @@ SOOP 다시보기·캐치 링크를 받아 제공되는 최고 화질의 영상�
 
 ## 사용
 
-1. SOOP 앱에서 영상의 공유 버튼을 누르고 **SOOP Downloader**를 선택합니다. 추가 확인 버튼 없이 다운로드가 시작됩니다.
+1. SOOP 앱에서 영상의 공유 버튼을 누르고 **SOOP Downloader**를 선택합니다. 앱 화면을 열지 않고 토스트로 알린 뒤 백그라운드 다운로드가 시작됩니다.
 2. 앱에서 주소를 붙여 넣고 **다운로드**를 눌러도 됩니다.
 3. 완료한 영상은 **Movies/SOOP Downloader**, 갤러리, 앱의 저장 기록에서 확인합니다.
 
-진행 알림·취소·중복 다운로드 억제·순차 처리를 지원합니다. 알림 권한을 거부해도 앱 화면에서 진행 상태를 확인할 수 있습니다. 프로세스가 종료되어 중단된 작업은 앱에서 주소를 다시 제출할 수 있습니다.
+진행 알림·현재 영상만 취소·중복 다운로드 억제·순차 처리를 지원합니다. 현재 영상을 취소하면 대기 중인 다음 영상이 이어서 시작됩니다. 이전 알림의 취소 버튼은 다음 영상에 영향을 주지 않습니다. 알림 권한을 거부해도 앱 화면에서 진행 상태를 확인할 수 있습니다. 프로세스가 종료되어 중단된 작업은 앱에서 주소를 다시 제출할 수 있습니다.
 
 ## 화질과 지원 범위
 
@@ -30,8 +30,8 @@ SOOP 다시보기·캐치 링크를 받아 제공되는 최고 화질의 영상�
 
 모든 완료된 업데이트는 정식 릴리즈로 제공합니다. 고정 패키지와 동일 영구 서명을 유지하고 `versionName`·`versionCode`를 증가시킵니다. 최초 서명 설정은 [RELEASE_SETUP.md](RELEASE_SETUP.md), 이후 작업 규칙은 [AGENTS.md](AGENTS.md)를 따릅니다.
 
-정식 버전 **1.0.0**: [APK 다운로드](https://github.com/shaterguy/soop-downloader-android/releases/download/v1.0.0/soop-downloader-android-v1.0.0.apk) · [릴리즈](https://github.com/shaterguy/soop-downloader-android/releases/tag/v1.0.0).
+정식 버전 **1.1.0**: [APK 다운로드](https://github.com/shaterguy/soop-downloader-android/releases/download/v1.1.0/soop-downloader-android-v1.1.0.apk) · [릴리즈](https://github.com/shaterguy/soop-downloader-android/releases/tag/v1.1.0).
 
 영구 RSA4096 서명키는 CI에서 생성했고, 암호화 키와 공개 인증서를 `signing/`에 보관합니다. 서명 암호는 저장소 Actions Secret에 유지합니다. 인증서 SHA256은 `9149386260014a262edd345f726dbc9443e434757a2ff1ab494424fbbf872cb4`입니다. 이후 업데이트도 동일 서명으로 설치 호환성을 유지합니다.
 
-[정식 릴리즈 검증 실행](https://github.com/shaterguy/soop-downloader-android/actions/runs/34701634969): 단위 테스트·lint·Android 15 실제 공유 다운로드·APK v3 서명·인증서 지문·패키지 검증을 수행합니다. 예시 캐치는 원본 640×1080 영상과 음성이 포함된 MP4로 저장됩니다.
+[정식 릴리즈 검증 실행](https://github.com/shaterguy/soop-downloader-android/actions/runs/34732906485): 단위 테스트·lint·Android 15 실제 공유 다운로드·APK v3 서명·인증서 지문·패키지 검증을 수행합니다. 예시 캐치는 원본 640×1080 영상과 음성이 포함된 MP4로 저장됩니다.
