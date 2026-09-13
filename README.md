@@ -8,7 +8,11 @@ SOOP 다시보기·캐치 링크를 받아 제공되는 최고 화질의 영상�
 2. 앱에서 주소를 붙여 넣고 **다운로드**를 눌러도 됩니다.
 3. 완료한 영상은 **Movies/SOOP Downloader**, 갤러리, 앱의 저장 기록에서 확인합니다.
 
-진행 알림·현재 영상만 취소·중복 다운로드 억제·순차 처리를 지원합니다. 현재 영상을 취소하면 대기 중인 다음 영상이 이어서 시작됩니다. 이전 알림의 취소 버튼은 다음 영상에 영향을 주지 않습니다. 알림 권한을 거부해도 앱 화면에서 진행 상태를 확인할 수 있습니다. 프로세스가 종료되어 중단된 작업은 앱에서 주소를 다시 제출할 수 있습니다.
+진행 알림·현재 영상만 취소·중복 다운로드 억제·설정한 수만큼 동시 처리를 지원합니다. 현재 영상을 취소하면 대기 중인 다음 영상이 이어서 시작됩니다. 이전 알림의 취소 버튼은 다음 영상에 영향을 주지 않습니다. 알림 권한을 거부해도 앱 화면에서 진행 상태를 확인할 수 있습니다. 프로세스가 종료되어 중단된 작업은 앱에서 주소를 다시 제출할 수 있습니다.
+
+## 동시 다운로드 설정
+
+앱의 **동시 다운로드 수** 버튼에서 1 이상의 원하는 정수를 직접 입력합니다. 기본값은 5이며 6·10 등 5개를 넘는 값도 설정할 수 있습니다. 설정은 재실행 후에도 유지됩니다. 수를 늘리면 대기 영상을 즉시 추가로 시작하고, 줄이면 진행 중인 영상은 유지하면서 이후 시작 수를 제한합니다. 진행·대기 목록과 영상별 알림에서 각각 취소할 수 있습니다.
 
 ## 화질과 지원 범위
 
@@ -19,7 +23,7 @@ SOOP 다시보기·캐치 링크를 받아 제공되는 최고 화질의 영상�
 
 ## 검증
 
-11개 단위 테스트가 URL·화질 순위·실제 공개 master·최고 화질 실패 처리·타임라인을 검사합니다. Android 15 에뮬레이터는 실제 예시 캐치를 공유하여 640×1080 영상과 음성이 갤러리에 한 번 저장되고, 복구 시 정상 파일이 보존되는지 확인합니다.
+18개 단위 테스트가 URL·화질 순위·실제 공개 master·최고 화질 실패 처리·타임라인을 검사합니다. Android 15 에뮬레이터는 실제 예시 캐치를 공유하여 640×1080 영상과 음성이 갤러리에 한 번 저장되고, 복구 시 정상 파일이 보존되는지 확인합니다.
 
 ```sh
 ./gradlew testDebugUnitTest lintRelease assembleRelease assembleDebugAndroidTest
@@ -30,8 +34,8 @@ SOOP 다시보기·캐치 링크를 받아 제공되는 최고 화질의 영상�
 
 모든 완료된 업데이트는 정식 릴리즈로 제공합니다. 고정 패키지와 동일 영구 서명을 유지하고 `versionName`·`versionCode`를 증가시킵니다. 최초 서명 설정은 [RELEASE_SETUP.md](RELEASE_SETUP.md), 이후 작업 규칙은 [AGENTS.md](AGENTS.md)를 따릅니다.
 
-정식 버전 **1.1.0**: [APK 다운로드](https://github.com/shaterguy/soop-downloader-android/releases/download/v1.1.0/soop-downloader-android-v1.1.0.apk) · [릴리즈](https://github.com/shaterguy/soop-downloader-android/releases/tag/v1.1.0).
+정식 버전 **1.2.0**: [APK 다운로드](https://github.com/shaterguy/soop-downloader-android/releases/download/v1.2.0/soop-downloader-android-v1.2.0.apk) · [릴리즈](https://github.com/shaterguy/soop-downloader-android/releases/tag/v1.2.0).
 
 영구 RSA4096 서명키는 CI에서 생성했고, 암호화 키와 공개 인증서를 `signing/`에 보관합니다. 서명 암호는 저장소 Actions Secret에 유지합니다. 인증서 SHA256은 `9149386260014a262edd345f726dbc9443e434757a2ff1ab494424fbbf872cb4`입니다. 이후 업데이트도 동일 서명으로 설치 호환성을 유지합니다.
 
-[정식 릴리즈 검증 실행](https://github.com/shaterguy/soop-downloader-android/actions/runs/34732906485): 단위 테스트·lint·Android 15 실제 공유 다운로드·APK v3 서명·인증서 지문·패키지 검증을 수행합니다. 예시 캐치는 원본 640×1080 영상과 음성이 포함된 MP4로 저장됩니다.
+[정식 릴리즈 검증 실행](https://github.com/shaterguy/soop-downloader-android/actions/runs/34733672777): 단위 테스트·lint·Android 15 실제 공유 다운로드·APK v3 서명·인증서 지문·패키지 검증을 수행합니다. 예시 캐치는 원본 640×1080 영상과 음성이 포함된 MP4로 저장됩니다.
