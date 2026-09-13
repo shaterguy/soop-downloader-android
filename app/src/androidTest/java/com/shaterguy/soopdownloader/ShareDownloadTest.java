@@ -27,7 +27,7 @@ public final class ShareDownloadTest extends InstrumentationTestCase {
     public void testBackgroundShareAndCancelOnlyActiveVideo() throws Exception {
         Context context=getInstrumentation().getTargetContext();
         SharedPreferences prefs=context.getSharedPreferences(DownloadService.PREFS,0);
-        assertTrue("Fresh emulator preferences",prefs.edit().clear().commit());
+        assertTrue("Fresh emulator preferences",prefs.edit().clear().putInt(DownloadService.LIMIT,1).commit());
         if(Build.VERSION.SDK_INT>=33)
             getInstrumentation().getUiAutomation().grantRuntimePermission(context.getPackageName(),Manifest.permission.POST_NOTIFICATIONS);
         Intent share=new Intent(Intent.ACTION_SEND).setClass(context,ShareActivity.class)
@@ -153,5 +153,40 @@ public final class ShareDownloadTest extends InstrumentationTestCase {
             if(saved!=null)context.getContentResolver().delete(saved,null,null);
         }
     }
+    public void testTwoDownloadsRunConcurrentlyWithSettingAboveFive() throws Exception {
+        Context c=getInstrumentation().getTargetContext();SharedPreferences p=c.getSharedPreferences(DownloadService.PREFS,0);
+        assertFalse(DownloadService.alive);assertTrue(p.edit().clear().putInt(DownloadService.LIMIT,7).commit());
+        if(Build.VERSION.SDK_INT>=33)getInstrumentation().getUiAutomation().grantRuntimePermission(c.getPackageName(),Manifest.permission.POST_NOTIFICATIONS);
+        String first="https://vod.sooplive.com/player/206420475";
+        try {
+            c.startActivity(new Intent(c,ShareActivity.class).setAction(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT,first).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            long until=SystemClock.elapsedRealtime()+10000;
+            while(p.getInt("activeCount",0)!=1&&SystemClock.elapsedRealtime()<until)SystemClock.sleep(50);
+            String firstId=p.getString("activeJobId","");assertFalse(firstId.isEmpty());
+            c.startActivity(new Intent(c,ShareActivity.class).setAction(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT,EXAMPLE).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            until=SystemClock.elapsedRealtime()+10000;
+            while(p.getInt("activeCount",0)!=2&&SystemClock.elapsedRealtime()<until)SystemClock.sleep(25);
+            assertEquals("Two distinct videos active simultaneously",2,p.getInt("activeCount",0));
+            assertEquals(0,p.getInt("queued",0));assertEquals(7,DownloadService.limit(c));
+            // Lowering does not cancel either running job.
+            p.edit().putInt(DownloadService.LIMIT,1).commit();
+            c.startService(new Intent(c,DownloadService.class).setAction(DownloadService.CONFIGURE));
+            getInstrumentation().waitForIdleSync();
+            assertEquals("Lowering the limit retains active work",2,p.getInt("activeCount",0));
+            c.startService(new Intent(c,DownloadService.class).setAction(DownloadService.CANCEL).putExtra("jobId",firstId));
+            until=SystemClock.elapsedRealtime()+180000;
+            while(DownloadService.alive&&SystemClock.elapsedRealtime()<until)SystemClock.sleep(100);
+            assertFalse(DownloadService.alive);JSONArray h=new JSONArray(p.getString("history","[]"));
+            assertEquals("One cancellation must not cancel the other concurrent job",1,h.length());
+            assertEquals(EXAMPLE,h.getJSONObject(0).getString("url"));
+            assertEquals("Per-job publication journals drained","{}",p.getString("pendingUris","{}"));
+            assertEquals("Setting survives service destruction",1,DownloadService.limit(c));
+        } finally {
+            c.stopService(new Intent(c,DownloadService.class));
+            JSONArray h=new JSONArray(p.getString("history","[]"));
+            for(int n=0;n<h.length();n++)c.getContentResolver().delete(Uri.parse(h.getJSONObject(n).getString("uri")),null,null);
+        }
+    }
+
 }
 

@@ -20,9 +20,11 @@ public final class MainActivity extends Activity {
     private TextView phase,queueLabel;
     private ProgressBar progress;
     private LinearLayout records;
-    private Button cancel;
+    private LinearLayout jobsView;
+    private Button concurrency;
+    private String shownJobs="";
     private String shownHistory="";
-    private String shownJobId="";
+
     private final Handler handler=new Handler(Looper.getMainLooper());
     private final Runnable refresh=new Runnable(){public void run(){renderStatus();handler.postDelayed(this,700);}};
     private SharedPreferences prefs(){return getSharedPreferences(DownloadService.PREFS,0);}
@@ -77,7 +79,9 @@ public final class MainActivity extends Activity {
         phase=label("다운로드할 영상을 기다리고 있습니다.",14,INK,true);state.addView(phase);
         progress=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);progress.setMax(100);progress.setProgressTintList(android.content.res.ColorStateList.valueOf(GREEN));LinearLayout.LayoutParams pp=new LinearLayout.LayoutParams(-1,dp(8));pp.topMargin=dp(16);state.addView(progress,pp);
         queueLabel=label("",12,MUTED,false);add(state,queueLabel,8);
-        cancel=button("다운로드 취소",false);add(state,cancel,8);cancel.setOnClickListener(v->startService(new Intent(this,DownloadService.class).setAction(DownloadService.CANCEL).putExtra("jobId",shownJobId)));
+        concurrency=button("동시 다운로드 수 설정",false);add(state,concurrency,10);
+        concurrency.setOnClickListener(v->configureConcurrency());
+        jobsView=new LinearLayout(this);jobsView.setOrientation(LinearLayout.VERTICAL);add(state,jobsView,8);
         add(root,label("공유로 더 빠르게",16,INK,true),26);
         add(root,label("SOOP에서 공유 → SOOP Downloader를 선택하면\n앱 화면 없이 백그라운드에서 다운로드합니다.",14,MUTED,false),8);
         LinearLayout header=new LinearLayout(this);header.setGravity(Gravity.CENTER_VERTICAL);add(root,header,28);
@@ -88,12 +92,23 @@ public final class MainActivity extends Activity {
     }
     private String version(){try{return getPackageManager().getPackageInfo(getPackageName(),0).versionName;}catch(Exception e){return "1.0.0";}}
     private void renderStatus(){
-        shownJobId=prefs().getString("activeJobId","");
+        concurrency.setText("동시 다운로드 수 · "+DownloadService.limit(this)+"개");
         boolean busy=prefs().getBoolean("busy",false);
         phase.setText(prefs().getString("phase","다운로드할 영상을 기다리고 있습니다."));
         int p=prefs().getInt("progress",0);progress.setIndeterminate(busy&&p==0);progress.setProgress(p);
         int queued=prefs().getInt("queued",0);queueLabel.setText(queued>0?"대기 중 "+queued+"개":busy?"앱을 나가도 알림에서 진행 상황을 확인할 수 있습니다.":"완료된 영상은 갤러리와 파일 앱에서도 열 수 있습니다.");
-        cancel.setVisibility(busy?View.VISIBLE:View.GONE);
+        String taskJson=prefs().getString("jobs","[]");
+        if(!taskJson.equals(shownJobs)){
+            shownJobs=taskJson;jobsView.removeAllViews();
+            try{JSONArray list=new JSONArray(taskJson);for(int i=0;i<list.length();i++){
+                JSONObject job=list.getJSONObject(i);String id=job.getString("id");
+                LinearLayout row=new LinearLayout(this);row.setOrientation(LinearLayout.VERTICAL);add(jobsView,row,8);
+                TextView name=label(job.getString("url"),12,MUTED,false);name.setMaxLines(1);name.setEllipsize(android.text.TextUtils.TruncateAt.END);row.addView(name);
+                row.addView(label(job.optString("phase")+" · "+job.optInt("progress")+"%",13,INK,false));
+                Button stop=button(job.optBoolean("running")?"이 영상 취소":"대기 취소",false);row.addView(stop);
+                stop.setOnClickListener(v->startService(new Intent(this,DownloadService.class).setAction(DownloadService.CANCEL).putExtra("jobId",id)));
+            }}catch(JSONException ignored){}
+        }
         String h=prefs().getString("history","[]");if(h.equals(shownHistory))return;shownHistory=h;records.removeAllViews();
         try{
             JSONArray items=new JSONArray(h);
@@ -105,6 +120,18 @@ public final class MainActivity extends Activity {
                 Button open=button("영상 열기  ↗",false);add(r,open,10);String uri=item.getString("uri");open.setOnClickListener(v->{try{startActivity(new Intent(Intent.ACTION_VIEW).setDataAndType(Uri.parse(uri),"video/mp4").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION));}catch(Exception e){toast("영상을 열지 못했습니다. 파일이 이동되었는지 확인해 주세요.");}});
             }
         }catch(JSONException e){records.addView(label("저장 기록을 읽지 못했습니다. 파일 앱에서 영상을 확인해 주세요.",13,MUTED,false));}
+    }
+    private void configureConcurrency(){
+        EditText count=new EditText(this);count.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);count.setSingleLine(true);count.setText(String.valueOf(DownloadService.limit(this)));count.selectAll();
+        AlertDialog dialog=new AlertDialog.Builder(this).setTitle("동시 다운로드 수").setMessage("1 이상의 원하는 개수를 입력하세요. 수를 줄여도 진행 중인 영상은 취소되지 않습니다.")
+            .setView(count).setNegativeButton("닫기",null).setPositiveButton("저장",null).create();
+        dialog.setOnShowListener(d->dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
+            try{int value=Integer.parseInt(count.getText().toString().trim());if(value<1)throw new NumberFormatException();
+                if(!prefs().edit().putInt(DownloadService.LIMIT,value).commit()){toast("설정을 저장하지 못했습니다.");return;}
+                if(DownloadService.alive)startService(new Intent(this,DownloadService.class).setAction(DownloadService.CONFIGURE));
+                renderStatus();dialog.dismiss();
+            }catch(NumberFormatException e){count.setError("1 이상의 정수를 입력해 주세요.");}
+        }));dialog.show();
     }
     private LinearLayout card(){LinearLayout l=new LinearLayout(this);l.setOrientation(LinearLayout.VERTICAL);l.setPadding(dp(18),dp(18),dp(18),dp(18));l.setBackground(shape(Color.WHITE,18));return l;}
     private GradientDrawable shape(int color,int radius){GradientDrawable g=new GradientDrawable();g.setColor(color);g.setCornerRadius(dp(radius));return g;}
