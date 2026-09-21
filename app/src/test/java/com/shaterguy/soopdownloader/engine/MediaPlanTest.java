@@ -11,10 +11,10 @@ public class MediaPlanTest {
         MediaPlan.Input input=MediaPlan.parseInput("우정잉\nhttps://vod.sooplive.com/player/206449237/catch?from=share\nSOOP에서 보기");
         assertEquals("206449237",input.id);assertTrue(input.catchVideo);assertEquals("https://vod.sooplive.com/player/206449237/catch",input.url);
     }
-    @Test public void acceptsCatchStoryAndStripsOrderingQuery() throws Exception {
+    @Test public void acceptsCatchStoryAndPreservesSelectionQuery() throws Exception {
         MediaPlan.Input input=MediaPlan.parseInput("공유 링크 https://vod.sooplive.com/player/793663/catchstory?o=1&o=3");
         assertEquals("793663",input.id);assertFalse(input.catchVideo);assertTrue(input.catchStory);
-        assertEquals("https://vod.sooplive.com/player/793663/catchstory",input.url);
+        assertEquals("https://vod.sooplive.com/player/793663/catchstory?o=1&o=3",input.url);
     }
     @Test public void rejectsLookalikeAndUnsupportedUrls() throws Exception {
         for(String s:new String[]{"https://vod.sooplive.com.evil.test/player/1","https://vod.sooplive.com@evil.test/player/1","https://vod.sooplive.com/player/1/catchstory/extra","https://play.sooplive.com/user/123","http://vod.sooplive.com/player/1"}) {

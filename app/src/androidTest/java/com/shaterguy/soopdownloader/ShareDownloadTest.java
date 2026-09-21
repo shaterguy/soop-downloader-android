@@ -193,7 +193,7 @@ public final class ShareDownloadTest extends InstrumentationTestCase {
     public void testCatchStoryUserUrlDownloadsAsSingleFile() throws Exception {
         Context context=getInstrumentation().getTargetContext();
         String shared="https://vod.sooplive.com/player/793663/catchstory?o=1&o=3";
-        assertEquals("https://vod.sooplive.com/player/793663/catchstory",Engine.normalizeInput(shared));
+        assertEquals("https://vod.sooplive.com/player/793663/catchstory?o=1&o=3",Engine.normalizeInput(shared));
         File target=new File(context.getCacheDir(),"catchstory-"+System.nanoTime()+".mp4");
         MediaExtractor extractor=new MediaExtractor();
         try {

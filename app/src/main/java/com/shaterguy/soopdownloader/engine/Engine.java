@@ -23,24 +23,30 @@ public final class Engine {
     private final Listener listener; private final String referer;
     private Engine(Listener listener,String referer){this.listener=listener;this.referer=referer;}
     public static Result download(String input,File target,Listener listener) throws Exception {
-        MediaPlan.Input in=MediaPlan.parseInput(input);return new Engine(listener,in.url).run(in,target);
+        MediaPlan.Input in=MediaPlan.parseInput(input);
+        Engine engine=new Engine(listener,in.url);
+        if(in.catchStory){in=engine.resolveCatchStory(in);engine=new Engine(listener,in.url);}
+        return engine.run(in,target);
     }
     public static String normalizeInput(String input) throws IOException { return MediaPlan.parseInput(input).url; }
+    private MediaPlan.Input resolveCatchStory(MediaPlan.Input story) throws Exception {
+        check();listener.progress("캐치스토리 영상 확인 중",-1);
+        HttpURLConnection c=open(story.url,null,0,-1);
+        try {
+            MediaPlan.Input resolved=MediaPlan.parseInput(c.getURL().toString());
+            if(!resolved.catchVideo||resolved.catchStory) throw new IOException("캐치스토리에서 선택된 캐치 영상을 확인할 수 없습니다.");
+            return resolved;
+        } finally {c.disconnect();}
+    }
     private void check() throws InterruptedIOException { if(listener.isCancelled()||Thread.currentThread().isInterrupted())throw new InterruptedIOException("다운로드를 취소했습니다."); }
     private static final class Part {
         final List<MediaPlan.Variant> variants=new ArrayList<>(); long duration;
     }
     private Result run(MediaPlan.Input in,File target) throws Exception {
         check();listener.progress("제공 화질 확인 중",-1);
-        JSONObject data;
-        if(in.catchStory) {
-            JSONObject response=new JSONObject(text("https://api.m.sooplive.com/catchstory/a/view?aStoryListIdx=&nStoryIdx="+in.id,null));
-            data=StoryPlan.exactStory(response,in.id);
-        } else {
-            JSONObject response=new JSONObject(text("https://api.m.sooplive.com/station/video/a/"+(in.catchVideo?"catchview":"view"),
-                "nTitleNo="+in.id+"&nApiLevel=10"+(in.catchVideo?"&nTargetTitleNo="+in.id+"&nPageNo=1&nLimit=10":"")));
-            data=exactVideo(response,in);
-        }
+        JSONObject response=new JSONObject(text("https://api.m.sooplive.com/station/video/a/"+(in.catchVideo?"catchview":"view"),
+            "nTitleNo="+in.id+"&nApiLevel=10"+(in.catchVideo?"&nTargetTitleNo="+in.id+"&nPageNo=1&nLimit=10":"")));
+        JSONObject data=exactVideo(response,in);
         String adult=data.optString("adult_status","pass");
         if(!adult.isEmpty()&&!"pass".equals(adult)) throw new IOException("이 영상은 SOOP 로그인 또는 본인 확인이 필요합니다.");
         if(!data.optString("sub_upload_type").isEmpty()||data.optBoolean("is_paid")||data.optBoolean("is_ppv")) throw new IOException("이 영상은 별도 시청 권한이 필요합니다.");
