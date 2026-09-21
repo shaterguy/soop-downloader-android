@@ -15,9 +15,11 @@ import android.os.Build;
 import android.os.SystemClock;
 import android.provider.MediaStore;
 import android.test.InstrumentationTestCase;
+import com.shaterguy.soopdownloader.engine.Engine;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import java.nio.ByteBuffer;
+import java.io.File;
 import java.io.OutputStream;
 
 /** Live acceptance gate: no fixture substitution or skip on network failure. */
@@ -185,6 +187,37 @@ public final class ShareDownloadTest extends InstrumentationTestCase {
             c.stopService(new Intent(c,DownloadService.class));
             JSONArray h=new JSONArray(p.getString("history","[]"));
             for(int n=0;n<h.length();n++)c.getContentResolver().delete(Uri.parse(h.getJSONObject(n).getString("uri")),null,null);
+        }
+    }
+
+    public void testCatchStoryUserUrlDownloadsAsSingleFile() throws Exception {
+        Context context=getInstrumentation().getTargetContext();
+        String shared="https://vod.sooplive.com/player/793663/catchstory?o=1&o=3";
+        assertEquals("https://vod.sooplive.com/player/793663/catchstory",Engine.normalizeInput(shared));
+        File target=new File(context.getCacheDir(),"catchstory-"+System.nanoTime()+".mp4");
+        MediaExtractor extractor=new MediaExtractor();
+        try {
+            Engine.Result result=Engine.download(shared,target,new Engine.Listener(){
+                public void progress(String phase,int percent){}
+                public boolean isCancelled(){return false;}
+            });
+            assertTrue("Catchstory output exists",target.isFile());
+            assertTrue("Catchstory output is nonempty",target.length()>1024);
+            assertEquals("Engine result bytes",target.length(),result.bytes);
+            assertTrue("Catchstory duration",result.duration>0);
+            extractor.setDataSource(target.getAbsolutePath());
+            boolean video=false,audio=false;
+            for(int i=0;i<extractor.getTrackCount();i++) {
+                MediaFormat f=extractor.getTrackFormat(i);
+                String mime=f.getString(MediaFormat.KEY_MIME);
+                if(mime!=null&&mime.startsWith("video/"))video=true;
+                if(mime!=null&&mime.startsWith("audio/"))audio=true;
+            }
+            assertTrue("Catchstory video track",video);
+            assertTrue("Catchstory audio track",audio);
+        } finally {
+            extractor.release();
+            target.delete();
         }
     }
 

@@ -32,9 +32,15 @@ public final class Engine {
     }
     private Result run(MediaPlan.Input in,File target) throws Exception {
         check();listener.progress("제공 화질 확인 중",-1);
-        JSONObject response=new JSONObject(text("https://api.m.sooplive.com/station/video/a/"+(in.catchVideo?"catchview":"view"),
-            "nTitleNo="+in.id+"&nApiLevel=10"+(in.catchVideo?"&nTargetTitleNo="+in.id+"&nPageNo=1&nLimit=10":"")));
-        JSONObject data=exactVideo(response,in);
+        JSONObject data;
+        if(in.catchStory) {
+            JSONObject response=new JSONObject(text("https://api.m.sooplive.com/catchstory/a/view?aStoryListIdx=&nStoryIdx="+in.id,null));
+            data=StoryPlan.exactStory(response,in.id);
+        } else {
+            JSONObject response=new JSONObject(text("https://api.m.sooplive.com/station/video/a/"+(in.catchVideo?"catchview":"view"),
+                "nTitleNo="+in.id+"&nApiLevel=10"+(in.catchVideo?"&nTargetTitleNo="+in.id+"&nPageNo=1&nLimit=10":"")));
+            data=exactVideo(response,in);
+        }
         String adult=data.optString("adult_status","pass");
         if(!adult.isEmpty()&&!"pass".equals(adult)) throw new IOException("이 영상은 SOOP 로그인 또는 본인 확인이 필요합니다.");
         if(!data.optString("sub_upload_type").isEmpty()||data.optBoolean("is_paid")||data.optBoolean("is_ppv")) throw new IOException("이 영상은 별도 시청 권한이 필요합니다.");

@@ -9,8 +9,8 @@ import java.util.regex.*;
 public final class MediaPlan {
     private MediaPlan() {}
     public static final class Input {
-        public final String id, url; public final boolean catchVideo;
-        Input(String id, boolean c) { this.id=id; catchVideo=c; url="https://vod.sooplive.com/player/"+id+(c?"/catch":""); }
+        public final String id, url; public final boolean catchVideo, catchStory;
+        Input(String id, boolean c, boolean s) { this.id=id; catchVideo=c; catchStory=s; url="https://vod.sooplive.com/player/"+id+(s?"/catchstory":c?"/catch":""); }
     }
     public static Input parseInput(String text) throws IOException {
         if (text==null || text.length()>16384) throw new IOException("SOOP 영상 링크 하나를 입력해 주세요.");
@@ -23,13 +23,14 @@ public final class MediaPlan {
             if(!"vod.sooplive.com".equalsIgnoreCase(uri.getHost())) continue;
             if(!"https".equalsIgnoreCase(uri.getScheme()) || uri.getUserInfo()!=null || (uri.getPort()!=-1 && uri.getPort()!=443))
                 throw new IOException("HTTPS SOOP 영상 링크만 지원합니다.");
-            Matcher path=Pattern.compile("^/(?:player|PLAYER/STATION)/(\\d+)(/catch)?/?$").matcher(uri.getPath());
-            if(!path.matches()) throw new IOException("캐치 또는 일반 다시보기 링크를 입력해 주세요.");
-            Input next=new Input(path.group(1),path.group(2)!=null);
+            Matcher path=Pattern.compile("^/(?:player|PLAYER/STATION)/(\\d+)(/(?:catch|catchstory))?/?$").matcher(uri.getPath());
+            if(!path.matches()) throw new IOException("캐치스토리·캐치 또는 일반 다시보기 링크를 입력해 주세요.");
+            String suffix=path.group(2);
+            Input next=new Input(path.group(1),"/catch".equals(suffix),"/catchstory".equals(suffix));
             if(found!=null && !found.url.equals(next.url)) throw new IOException("한 번에 영상 링크 하나만 입력해 주세요.");
             found=next;
         }
-        if(found==null) throw new IOException("지원하는 SOOP 캐치·다시보기 링크가 없습니다.");
+        if(found==null) throw new IOException("지원하는 SOOP 캐치스토리·캐치·다시보기 링크가 없습니다.");
         return found;
     }
     static URI trusted(String text) throws IOException {
