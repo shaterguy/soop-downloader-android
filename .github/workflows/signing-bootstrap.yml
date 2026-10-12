@@ -2,7 +2,7 @@ name: Initialize permanent signing identity
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, 'ci-fallback/**']
     paths: ['tools/signing.sh']
 permissions:
   contents: write
@@ -12,7 +12,9 @@ concurrency:
   cancel-in-progress: false
 jobs:
   bootstrap:
-    if: github.ref == 'refs/heads/main'
+    if: >-
+      (github.event_name != 'push' || contains(github.event.head_commit.message, '[gh-fallback:signing-bootstrap.yml]')) &&
+      (github.ref == 'refs/heads/main')
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
