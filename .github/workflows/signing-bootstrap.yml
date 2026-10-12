@@ -1,6 +1,9 @@
 name: Initialize permanent signing identity
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['tools/signing.sh']
 permissions:
   contents: write
   actions: write
