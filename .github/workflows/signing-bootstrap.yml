@@ -1,9 +1,6 @@
 name: Initialize permanent signing identity
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths: ['.github/workflows/signing-bootstrap.yml', 'tools/signing.sh']
 permissions:
   contents: write
   actions: write
