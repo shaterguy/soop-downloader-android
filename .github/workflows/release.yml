@@ -1,8 +1,5 @@
 name: Stable Android release
 on:
-  push:
-    branches: [main]
-    paths-ignore: ['docs/**', '*.md']
   workflow_dispatch:
 permissions:
   contents: write
